@@ -14,6 +14,7 @@ use Gloudemans\Shoppingcart\Exceptions\CartAlreadyStoredException;
 
 class Cart
 {
+
     const DEFAULT_INSTANCE = 'default';
 
     /**
@@ -355,19 +356,14 @@ class Cart
     {
         $content = $this->getContent();
 
-
-        $this->getConnection()
-             ->table($this->getTableName())
-             ->where('identifier', $identifier)
-             ->where('instance', $this->currentInstance())
-             ->delete();
-
+        if ($this->storedCartWithIdentifierExists($identifier)) {
+            throw new CartAlreadyStoredException("A cart with identifier {$identifier} was already stored.");
+        }
 
         $this->getConnection()->table($this->getTableName())->insert([
             'identifier' => $identifier,
             'instance' => $this->currentInstance(),
-            'content' => serialize($content),
-            'created_at'=> new \DateTime()
+            'content' => str_replace("\0", "~~NULL_BYTE~~", serialize($content))
         ]);
 
         $this->events->dispatch('cart.stored');
@@ -386,10 +382,9 @@ class Cart
         }
 
         $stored = $this->getConnection()->table($this->getTableName())
-            ->where('instance', $this->currentInstance())
             ->where('identifier', $identifier)->first();
 
-        $storedContent = unserialize($stored->content);
+        $storedContent = unserialize(str_replace("~~NULL_BYTE~~", "\0", $stored->content));
 
         $currentInstance = $this->currentInstance();
 
@@ -407,9 +402,9 @@ class Cart
 
         $this->instance($currentInstance);
 
+        $this->getConnection()->table($this->getTableName())
+            ->where('identifier', $identifier)->delete();
     }
-
-
 
     /**
      * Deletes the stored cart with given identifier
